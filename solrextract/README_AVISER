@@ -1,0 +1,83 @@
+Word-extraction and statistics from Statsbiblioteket/Mediestream/aviser
+
+Requirements: bash and HTTP-access to a Solr server with aviser.
+
+------------------
+./get_solr_docs.sh
+
+Extracts all text content from a single field for all documents matching the given query.
+
+This works poorly for result sets beyond 1M hits due to Solr paging. Cursor-based paging
+is not used as the recordID field (the only one suitable in the aviser project) is not
+DocValued, meaning that cursor-use introduces a very large heap overhead (multi-gigabytes).
+
+The output file is automatically gzipped, typically to below half size.
+
+*** Sample:
+./get_solr_docs.sh "http://tokemon:56708/aviser/sbsolr/collection1/select" "recordBase:doms_aviser AND sort_year_asc:1974*" "fulltext_org" aviser1974.dat
+Extracts all text from the full-text field 'fulltext_org' for all articles from the year 1974
+and stores the result in aviser1974.dat
+
+*** Sample batch:
+for YEAR in `seq 1800 1749`; do ./get_solr_docs.sh "http://tokemon:56708/aviser/sbsolr/collection1/select" "recordBase:doms_aviser AND sort_year_asc:${YEAR}*" "fulltext_org" artikler_${YEAR}.txt ; done
+or
+seq 1749 2013 | parallel './get_solr_docs.sh "http://tokemon:56708/aviser/sbsolr/collection1/select" "recordBase:doms_aviser AND sort_year_asc:{}*" "fulltext_org" artikler_{}.txt'
+
+This creates a text extraction for each year, from 1800 to 1749.
+
+
+--------------
+./normalise.sh
+Lowercases letters, removes punctuation, ensures 1 word/line, no empty lines
+
+*** Sample:
+./normalise.sh artikler_2010.txt.gz > artikler_2010.norm
+or
+./normalise.sh artikler_2010.txt.gz | gzip > artikler_2010.norm.gz
+
+*** Sample batch:
+for YEAR in `seq 1749 2013`; do echo $YEAR ; ./normalise.sh artikler_${YEAR}.txt.gz > artikler_${YEAR}.norm ; done
+or
+seq 1749 2013 | parallel 'if [ ! -s artikler_{}.norm ]; then ./normalise.sh artikler_{}.txt.gz > artikler_{}.norm ; fi'
+
+
+------------------
+./word_compress.sh
+Takes text output from normalise.sh and extracts unique words and their count.
+
+*** Sample:
+./word_compress.sh artikler_2010.txt.norm.gz > artikler_2010.txt.norm.uniq
+
+*** Sample batch:
+for YEAR in `seq 1749 2013`; do echo $YEAR ; ./word_compress.sh artikler_${YEAR}.norm > artikler_${YEAR}.norm.uniq ; done
+or run in #CPU threads
+seq 1749 2013 | parallel 'if [ ! -s artikler_{}.norm.uniq ]; then ./word_compress.sh artikler_{}.norm > artikler_{}.norm.uniq ; fi'
+
+---------------
+./word_merge.sh
+Merges 2 or more outputs from word_compress.sh
+
+*** Sample:
+./word_merge.sh artikler_2010.txt.norm.uniq artikler_2011.txt.norm.uniq > artikler_2010-11.norm.uniq
+
+*** Sample batch:
+for DECADE in `seq 195 200`; do echo $DECADE ; ./word_merge.sh artikler_${}[0-9].norm.uniq ./word_merge.sh > artikler_decade_${}0.norm.uniq ; done
+or
+seq 185 200 | parallel './word_merge.sh artikler_{}[0-9].norm.uniq ./word_merge.sh > artikler_decade_{}0.norm.uniq'
+
+-------------
+./word_stats.sh
+Takes a text from word_compress.sh and extracts
+- Character count
+- Word count
+- Unique word count
+
+*** Sample:
+./word_stats.sh artikler_decade_2010.norm.uniq
+
+*** Sample batch (don't thread this directly as it messes up the output):
+echo "#title chars words unique" > artikler_stats_years.csv ; for YEAR in `seq 1749 2013`; do echo $YEAR ; ./word_stats.sh artikler_${YEAR}.norm.uniq >> artikler_stats_years.csv ; done
+echo "#title chars words unique" > artikler_stats_decades.csv ; for DECADE in `seq 1850 10 2009`; do echo $DECADE ; ./word_stats.sh artikler_decade_${DECADE}0.norm.uniq >> artikler_stats_decades.csv ; done
+
+Plot artikler_stats_years.csv with
+gnuplot plot_stats_years.gp
