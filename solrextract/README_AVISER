@@ -81,3 +81,10 @@ echo "#title chars words unique" > artikler_stats_decades.csv ; for DECADE in `s
 
 Plot artikler_stats_years.csv with
 gnuplot plot_stats_years.gp
+
+---------------
+Unique characters in the corpus
+# http://stackoverflow.com/questions/8905405/extract-unique-characters-from-different-files-in-utf-8
+
+for Y in `seq 1749 2013`;  do echo $Y ; less artikler_${Y}.norm.uniq | awk '{for(i=1;i<=NF;i++)if(!a[$i]++)print $i}' ORS='' FS='' > artikler_${Y}.char.uniq ; done
+cat artikler_*.char.uniq | awk '{for(i=1;i<=NF;i++)if(!a[$i]++)print $i}' ORS='' FS=''
